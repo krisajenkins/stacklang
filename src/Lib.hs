@@ -1,9 +1,10 @@
 module Lib where
 
+import           Control.Monad
+import           Control.Monad.IO.Class
 import           Data.Functor.Identity
-
 import           Text.Megaparsec
-import           Text.Megaparsec.Lexer hiding (space)
+import           Text.Megaparsec.Lexer  hiding (space)
 
 data StackElement
   = SValue Integer
@@ -19,12 +20,6 @@ data Expr
     deriving (Show,Eq)
 
 ------------------------------------------------------------
-
-program1 :: String
-program1 = "7 2 3 + * str reverse str"
-
-program2 :: String
-program2 = "fib5 + + + +"
 
 int :: ParsecT String Identity Expr
 int = Value <$> integer
@@ -46,33 +41,41 @@ parseProgram = runParser programParser "<code>"
 
 ------------------------------------------------------------
 
-evaluateStep :: Stack -> Expr -> Stack
-evaluateStep s (Value n) = SValue n : s
-evaluateStep (SValue x:SValue y:s) (Symbol "+") = SValue (x + y) : s
-evaluateStep (SValue x:SValue y:s) (Symbol "*") = SValue (x * y) : s
-evaluateStep (SValue x:s) (Symbol "str") = SString (show x) : s
-evaluateStep (SString x:s) (Symbol "str") = SString x : s
-evaluateStep (SString x:s) (Symbol "reverse")= SString (reverse x) : s
-evaluateStep s (Symbol "fib5") = (SValue <$> [1,2,3,5,8]) ++ s
-evaluateStep s op = Err op : s
+evaluateStep :: MonadIO m
+             => Stack -> Expr -> m Stack
+evaluateStep s (Value n) = pure (SValue n : s)
+evaluateStep (SValue x:SValue y:s) (Symbol "+") = pure $  SValue (x + y) : s
+evaluateStep (SValue x:SValue y:s) (Symbol "*") = pure $  SValue (x * y) : s
+evaluateStep (SValue x:s) (Symbol "str") = pure $  SString (show x) : s
+evaluateStep (SString x:s) (Symbol "str") = pure $  SString x : s
+evaluateStep (SString x:s) (Symbol "reverse")= pure $  SString (reverse x) : s
+evaluateStep s (Symbol "print") = liftIO (print s) >> pure s
+evaluateStep s (Symbol "fib5") = pure $  (SValue <$> [1,2,3,5,8]) ++ s
+evaluateStep s op = pure $  Err op : s
 
-evaluateProgram :: [Expr] -> [Stack]
-evaluateProgram = scanl evaluateStep []
+evaluateProgram :: [Expr] -> IO Stack
+evaluateProgram = foldM evaluateStep []
 
-runProgram :: String -> Either ParseError [Stack]
-runProgram text = evaluateProgram <$> parseProgram text
+runProgram :: String -> IO ()
+runProgram text =
+  do either print
+            (void . evaluateProgram)
+            (parseProgram text)
+     print "----"
 
+--         (intersperse (Symbol "print") <$> parseProgram text)
 ------------------------------------------------------------
 
+programs :: [String]
+programs =
+  ["7 2 3 + * str reverse str print"
+   ,"7 2 3 print + * str reverse str print"
+   ,"fib5 print + + + + print"
+    ,"1 + + print"
+  ]
+
 someFunc :: IO ()
-someFunc =
-  do either print
-            (mapM_ print)
-            (runProgram program1)
-     print "----"
-     either print
-            (mapM_ print)
-            (runProgram program2)
+someFunc = mapM_ runProgram programs
 
 k :: IO ()
 k = someFunc

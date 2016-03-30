@@ -15,10 +15,7 @@ type Stack = [StackElement]
 
 data Expr
   = Value Integer
-  | Plus
-  | Multiply
-  | Str
-  | Reverse
+  | Symbol String
     deriving (Show,Eq)
 
 ------------------------------------------------------------
@@ -29,23 +26,14 @@ program1 = "7 2 3 + * str reverse str"
 int :: ParsecT String Identity Expr
 int = Value <$> integer
 
-plus :: ParsecT String Identity Expr
-plus = string "+" *> pure Plus
-
-multiply :: ParsecT String Identity Expr
-multiply = string "*" *> pure Multiply
-
-str :: ParsecT String Identity Expr
-str = string "str" *> pure Str
-
-reverseP :: ParsecT String Identity Expr
-reverseP = string "reverse" *> pure Reverse
+symbolP :: ParsecT String Identity Expr
+symbolP = Symbol <$> choice [some alphaNumChar,string "+",string "*"]
 
 whitespace :: ParsecT String Identity ()
 whitespace = skipMany spaceChar
 
 expr :: ParsecT String Identity Expr
-expr = choice [int,plus,multiply,str,reverseP] <* whitespace
+expr = choice [int,symbolP] <* whitespace
 
 programParser :: ParsecT String Identity [Expr]
 programParser = some expr <* eof
@@ -57,11 +45,11 @@ parseProgram = runParser programParser "<code>"
 
 evaluateStep :: Stack -> Expr -> Stack
 evaluateStep s (Value n) = SValue n : s
-evaluateStep (SValue x:SValue y:s) Plus = SValue (x + y) : s
-evaluateStep (SValue x:SValue y:s) Multiply = SValue (x * y) : s
-evaluateStep (SValue x:s) Str = SString (show x) : s
-evaluateStep (SString x:s) Str = SString x : s
-evaluateStep (SString x:s) Reverse = SString (reverse x) : s
+evaluateStep (SValue x:SValue y:s) (Symbol "+") = SValue (x + y) : s
+evaluateStep (SValue x:SValue y:s) (Symbol "*") = SValue (x * y) : s
+evaluateStep (SValue x:s) (Symbol "str") = SString (show x) : s
+evaluateStep (SString x:s) (Symbol "str") = SString x : s
+evaluateStep (SString x:s) (Symbol "reverse")= SString (reverse x) : s
 evaluateStep s op = Err op : s
 
 evaluateProgram :: [Expr] -> Stack
